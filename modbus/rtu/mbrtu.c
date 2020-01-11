@@ -178,6 +178,11 @@ eMBRTUReceive( UCHAR * pucRcvAddress, UCHAR ** pucFrame, USHORT * pusLength )
     {
         eStatus = MB_EIO;
     }
+		
+		if(xFrameReceived==FALSE)
+		{
+			//handle log debug invaild data
+		}
 
     EXIT_CRITICAL_SECTION(  );
     return eStatus;
