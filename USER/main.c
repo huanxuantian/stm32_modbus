@@ -31,8 +31,9 @@ void init_iomodule()
     //启动GPIO
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | \
                            RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD | \
-						   RCC_APB2Periph_GPIOE ,
+						   RCC_APB2Periph_GPIOE |RCC_APB2Periph_AFIO,
                            ENABLE);
+		GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable,ENABLE);//禁用JTAC模式，只开启SWD模式，PB3，PB4需要使用GPIO功能
 		GPIO_InitTypeDef GPIO_InitStructure;
 
 	//输出配置
@@ -60,6 +61,7 @@ void init_iomodule()
 	GPIO_SetBits(GPIOB,GPIO_Pin_9);
 	GPIO_SetBits(GPIOB,GPIO_Pin_10);
 	//输入配置
+
 		GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 		GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1| GPIO_Pin_2| GPIO_Pin_3|
@@ -118,6 +120,11 @@ USHORT   usInputregStart                                 = S_INPUTREG_START;
 #define S_INPUTREG_NRegs (S_INPUTREG_NBit/8)
 #endif
 UCHAR    ucInputBuf[S_INPUTREG_NRegs];
+#if S_INPUTREG_NBit%16
+#define S_INPUTREG_WORD (S_INPUTREG_NBit/16+1)
+#else
+#define S_INPUTREG_WORD (S_INPUTREG_NBit/16)
+#endif
 //目前有效为低八位数据，分别对应PB0-PB7输入
 void init_input(void)
 {
@@ -146,7 +153,7 @@ void handle_input(void)
 	static int last_check_id=0;
 	uint8_t input_data=0;
 	last_check_id%=S_INPUTREG_NBit;
-	if(count%10==0)
+	if(count%2==0)
 	{
 		count=0;
 		if(last_check_id==0)input_data = GPIO_ReadInputDataBit(GPIOB,GPIO_Pin_0);
@@ -171,13 +178,41 @@ void handle_input(void)
 
 eMBErrorCode
 eMBRegInputCB( UCHAR * pucRegBuffer, USHORT usAddress, USHORT usNRegs )
-{
-    eMBErrorCode    eStatus = MB_ENOERR;
-	static uint8_t flag = 0;
-	
-	flag == 0 ? GPIO_SetBits(GPIOA,GPIO_Pin_1) : GPIO_ResetBits(GPIOA,GPIO_Pin_1);  
-	flag ^= 1;
+{	
+	  eMBErrorCode    eStatus = MB_ENOERR;
+    USHORT          iRegIndex , iNReg;
+    UCHAR *         pucDiscreteBuf;
+    USHORT          INPUTREG_START;
+    USHORT          INPUTREG_NWORD;
+    USHORT          usInputStart;
+    iNReg =  usNRegs;
+
+    pucDiscreteBuf = ucInputBuf;
+    INPUTREG_START = S_INPUTREG_START;
+    INPUTREG_NWORD = S_INPUTREG_WORD;
+    usInputStart = usInputregStart;
+
+    /* it already plus one in modbus function method. */
+    usAddress--;
+
+    if( ( usAddress >= INPUTREG_START ) &&
+        ( usAddress + usNRegs <= INPUTREG_START + INPUTREG_NWORD ) )
+    {
+        iRegIndex = (USHORT) (usAddress - usInputStart);
+				while (iNReg > 0)
+				{
+						*pucRegBuffer++ = pucDiscreteBuf[iRegIndex+1];
+						*pucRegBuffer++ = pucDiscreteBuf[iRegIndex];
+						iRegIndex+=2;
+						iNReg--;
+				}
+    }
+    else
+    {
+        eStatus = MB_ENOREG;
+    }
     return eStatus;
+
 }
 
 /* add test */
@@ -238,12 +273,6 @@ eMBRegHoldingCB( UCHAR * pucRegBuffer, USHORT usAddress, USHORT usNRegs, eMBRegi
     return eStatus;
     
 }
-/*
-	flag == 0 ? GPIO_SetBits(GPIOA,GPIO_Pin_7) : GPIO_ResetBits(GPIOA,GPIO_Pin_7);  
-	flag == 0 ? GPIO_SetBits(GPIOB,GPIO_Pin_8) : GPIO_ResetBits(GPIOB,GPIO_Pin_8);  
-	flag == 0 ? GPIO_SetBits(GPIOB,GPIO_Pin_9) : GPIO_ResetBits(GPIOB,GPIO_Pin_9);
-	flag ^= 1;
-*/
 #define S_COIL_START                  0
 #define S_COIL_NCOILS                 11
 
@@ -372,10 +401,6 @@ eMBRegCoilsCB( UCHAR * pucRegBuffer, USHORT usAddress, USHORT usNCoils, eMBRegis
 eMBErrorCode
 eMBRegDiscreteCB( UCHAR * pucRegBuffer, USHORT usAddress, USHORT usNDiscrete )
 {
-    static uint8_t flag = 0;
-	
-	flag == 0 ? GPIO_SetBits(GPIOB,GPIO_Pin_8) : GPIO_ResetBits(GPIOB,GPIO_Pin_8);  
-	flag ^= 1;
 	
     eMBErrorCode    eStatus = MB_ENOERR;
     USHORT          iRegIndex , iRegBitIndex , iNReg;
