@@ -201,7 +201,14 @@ eMBRegInputCB( UCHAR * pucRegBuffer, USHORT usAddress, USHORT usNRegs )
         iRegIndex = (USHORT) (usAddress - usInputStart);
 				while (iNReg > 0)
 				{
-						*pucRegBuffer++ = pucDiscreteBuf[iRegIndex+1];
+						if(iRegIndex+1<=S_INPUTREG_NRegs)
+						{
+							*pucRegBuffer++ = pucDiscreteBuf[iRegIndex+1];
+						}
+						else
+						{
+							*pucRegBuffer++ = 0x00;
+						}
 						*pucRegBuffer++ = pucDiscreteBuf[iRegIndex];
 						iRegIndex+=2;
 						iNReg--;
