@@ -22,7 +22,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f10x_it.h"
-
+extern void TimingDelay_Decrement(void);
 /** @addtogroup Template_Project
   * @{
   */
@@ -57,6 +57,7 @@ void HardFault_Handler(void)
   /* Go to infinite loop when Hard Fault exception occurs */
   while (1)
   {
+		printf("fault!!!!!!!\r\n");
   }
 }
 
@@ -70,6 +71,7 @@ void MemManage_Handler(void)
   /* Go to infinite loop when Memory Manage exception occurs */
   while (1)
   {
+		printf("fault!!!!!!!\r\n");
   }
 }
 
@@ -83,6 +85,7 @@ void BusFault_Handler(void)
   /* Go to infinite loop when Bus Fault exception occurs */
   while (1)
   {
+		printf("fault!!!!!!!\r\n");
   }
 }
 
@@ -96,6 +99,7 @@ void UsageFault_Handler(void)
   /* Go to infinite loop when Usage Fault exception occurs */
   while (1)
   {
+		printf("fault!!!!!!!\r\n");
   }
 }
 
@@ -133,6 +137,7 @@ void PendSV_Handler(void)
   */
 void SysTick_Handler(void)
 {
+	TimingDelay_Decrement();
 }
 
 /******************************************************************************/

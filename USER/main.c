@@ -2,6 +2,98 @@
 #include "stm32f10x.h"
 #include "mb.h"
 #include "mbutils.h"
+#include "delay.h"
+#include "can.h"
+#include "business.h"
+
+u8 be_printf=0;
+
+#ifdef __GNUC__
+  /* With GCC/RAISONANCE, small printf (option LD Linker->Libraries->Small printf
+     set to 'Yes') calls __io_putchar() */
+  #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+  #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+	
+	
+PUTCHAR_PROTOTYPE
+{
+ /* Place your implementation of fputc here */
+ /* e.g. write a character to the USART */
+	//be_printf =1;
+  USART_SendData(USART2, (uint8_t) ch);
+	//be_printf =0;
+  /* 循环等待直到发送结束*/
+  while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)
+  {}
+	//be_printf =0;
+  return ch;
+}
+
+void USART2_Int(int baud)
+{
+
+    GPIO_InitTypeDef GPIO_InitStructure;
+	  USART_InitTypeDef USART_InitStructure;
+	  NVIC_InitTypeDef NVIC_InitStructure;
+	 
+	  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);	//使能PORTA时钟
+	  RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE); //使能USART2
+ 	  USART_DeInit(USART2);  //复位串口2	  //USART2_TX   PA.2
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2; //PA.2
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;	//复用推挽输出
+    GPIO_Init(GPIOA, &GPIO_InitStructure); //初始化PA2
+   
+    //USART2_RX	  PA.3
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;//浮空输入
+    GPIO_Init(GPIOA, &GPIO_InitStructure);  //初始化PA3     
+	
+	  //Usart1 NVIC 配置
+	
+    NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
+	  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=3 ;//抢占优先级3
+	  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;		//子优先级3
+	  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;			//IRQ通道使能
+	  NVIC_Init(&NVIC_InitStructure);	//根据指定的参数初始化VIC寄存器
+		
+  /* USARTx configured as follow:
+        - BaudRate = 9600 baud  波特率
+        - Word Length = 8 Bits  数据长度
+        - One Stop Bit          停止位
+        - No parity             校验方式
+        - Hardware flow control disabled (RTS and CTS signals) 硬件控制流
+        - Receive and transmit enabled                         使能发送和接收
+  */
+  USART_InitStructure.USART_BaudRate = baud;
+  USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+  USART_InitStructure.USART_StopBits = USART_StopBits_1;
+  USART_InitStructure.USART_Parity = USART_Parity_No;
+  USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+  USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+
+  USART_Init(USART2, &USART_InitStructure);
+	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);//开启中断
+  USART_Cmd(USART2, ENABLE);                    //使能串口  
+}
+
+void USART2_Config(int baud)
+{
+	USART_InitTypeDef USART_InitStructure;
+	USART_Cmd(USART2, DISABLE);
+	
+	USART_InitStructure.USART_BaudRate =baud;
+	USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+	USART_InitStructure.USART_StopBits = USART_StopBits_1;
+	USART_InitStructure.USART_Parity = USART_Parity_No;
+	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_Init(USART2, &USART_InitStructure);
+	
+	USART_Cmd(USART2, ENABLE);
+}
 
 void NVIC_Configuration(void)
 {
@@ -24,14 +116,56 @@ void NVIC_Configuration(void)
     NVIC_Init(&NVIC_InitStructure);
 }
 
+
+/*-------------------------------------------------------------------------------
+程序名称：TIM4_Base_Init
+程序描述：定时器TIM4通用定时功能
+输入参数：
+返回参数：无
+备    注：0.1khz
+---------------------------------------------------------------------------------*/
+void TIM4_Base_Init(void)
+{
+  TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE); //时钟使能
+
+	TIM_TimeBaseStructure.TIM_Period = 10-1;  //重装值，
+	TIM_TimeBaseStructure.TIM_Prescaler =7200-1; //分频系数，72M/7200=10KHz,其他依此类推
+	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //设置时钟分割:TDTS = Tck_tim
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  //TIM向上计数模式
+	TIM_TimeBaseInit(TIM4, &TIM_TimeBaseStructure);     //把上述数值写入对应寄存器
+ 
+	TIM_ITConfig(TIM4,TIM_IT_Update,ENABLE);            //使能或者失能指定的TIM中断
+	
+	NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;            //TIM4中断
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;  //先占优先级0级
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 6;  //从优先级3级
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; //IRQ通道被使能
+	NVIC_Init(&NVIC_InitStructure);                 //把上述数值写入对应寄存
+	
+	TIM_Cmd(TIM4, ENABLE);  //使能TIMx外设
+	
+							 
+}
+
+void TIM4_IRQHandler(void)   //TIM4中断
+{
+	if (TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET)//检查指定的TIM中断发生与否:TIM 中断源
+	{
+		TIM_ClearITPendingBit(TIM4, TIM_IT_Update  );  //清除TIMx的中断待处理位:TIM 中断 
+		can_task();
+		TimeDlay_ms__Decrement();
+	}
+}
 void init_input(void);
 void init_iomodule()
 {
 	    //下面是给各模块开启时钟
     //启动GPIO
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | \
-                           RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD | \
-						   RCC_APB2Periph_GPIOE |RCC_APB2Periph_AFIO,
+                           RCC_APB2Periph_GPIOC ,
                            ENABLE);
 		GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable,ENABLE);//禁用JTAC模式，只开启SWD模式，PB3，PB4需要使用GPIO功能
 		GPIO_InitTypeDef GPIO_InitStructure;
@@ -40,7 +174,7 @@ void init_iomodule()
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0|GPIO_Pin_1|GPIO_Pin_2|GPIO_Pin_3|
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0|GPIO_Pin_1|//GPIO_Pin_2|GPIO_Pin_3|
 	GPIO_Pin_4|GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7;  //???1  LED1  LED2
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
@@ -67,6 +201,12 @@ void init_iomodule()
 		GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1| GPIO_Pin_2| GPIO_Pin_3|
 		GPIO_Pin_4| GPIO_Pin_5| GPIO_Pin_6| GPIO_Pin_7;
 		GPIO_Init(GPIOB, &GPIO_InitStructure);
+		
+		GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+		GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;
+		GPIO_Init(GPIOC, &GPIO_InitStructure);
+		GPIO_SetBits(GPIOC,GPIO_Pin_13);
 		//读取IO外部初始值，之后定时更新
 		init_input();
 }
@@ -80,17 +220,30 @@ void handle_regdata(void);//直接读写内存数据，
 void handle_param(void);//通过特殊的寄存器地址写入特殊数据的处理，在主程序中处理,当参数需要保存时会启动保存
 int main(void)
 {
-    SystemInit();
-	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
+  SystemInit();
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 	NVIC_Configuration();
+	//SysTick_Init();
+
 	init_iomodule();
 	init_regdata();
-
+	
+	USART2_Int(115200);
+	printf("\r\nsystem startup now......\r\n");
+		//初始化CAN
+	//brp=4:500kpbs,8:250kpbs,16:125kpbs
+	//CAN_Mode_Normal:正常模式，CAN_Mode_LoopBack：回环模式
+	CAN_Mode_Init(CAN_SJW_1tq,CAN_BS2_6tq,CAN_BS1_11tq,4,CAN_Mode_Normal);
+	//	CAN1_Config16BitFilter(0XFBE00,0xfd20);
+	CAN1_Config16BitFilter(0XFD00,0xfd20); //不行就用这个ID 
+	TIM4_Base_Init();	
 	
 	eMBInit( MB_RTU, 0x01, 0, 9600, MB_PAR_NONE );
 	
 	/* Enable the Modbus Protocol Stack. */
 	eMBEnable(  );
+	
+	
 	
 	for( ;; )
 	{
@@ -98,6 +251,7 @@ int main(void)
 		handle_coils();
 		handle_input();
 		handle_param();
+		//can_task();
 		
 	    /* Here we simply count the number of poll cycles. */
 	}
@@ -229,8 +383,8 @@ eMBRegInputCB( UCHAR * pucRegBuffer, USHORT usAddress, USHORT usNRegs )
 #define REG_HOLDING_NREGS 8
 /* content of the holding regs 
    the test data is from xukai's port */
-uint16_t usRegHoldingBuf[REG_HOLDING_NREGS] = {0x147b,0x3f8e,
-0x147b,0x400e,0x1eb8,0x4055,0x147b,0x408e};
+uint16_t usRegHoldingBuf[REG_HOLDING_NREGS] = {0xFFFF,0xFFFF,
+0xFFFF,0xFFFF,0x1eb8,0x4055,0x147b,0x408e};
 
 void handle_regdata(void)
 {
@@ -304,10 +458,10 @@ void handle_coils(void)
 			
 			if(cur_bit)
 			{
-				if(i==0) GPIO_ResetBits(GPIOA,GPIO_Pin_0);
+				if(i==0){ GPIO_ResetBits(GPIOA,GPIO_Pin_0);GPIO_ResetBits(GPIOC,GPIO_Pin_13);}
 				else if(i==1) GPIO_ResetBits(GPIOA,GPIO_Pin_1);
-				else if(i==2) GPIO_ResetBits(GPIOA,GPIO_Pin_2);
-				else if(i==3) GPIO_ResetBits(GPIOA,GPIO_Pin_3);
+				//else if(i==2) GPIO_ResetBits(GPIOA,GPIO_Pin_2);
+				//else if(i==3) GPIO_ResetBits(GPIOA,GPIO_Pin_3);
 				else if(i==4) GPIO_ResetBits(GPIOA,GPIO_Pin_4);
 				else if(i==5) GPIO_ResetBits(GPIOA,GPIO_Pin_5);
 				else if(i==6) GPIO_ResetBits(GPIOA,GPIO_Pin_6);
@@ -318,10 +472,10 @@ void handle_coils(void)
 			}
 			else
 			{
-				if(i==0) GPIO_SetBits(GPIOA,GPIO_Pin_0);
+				if(i==0){ GPIO_SetBits(GPIOA,GPIO_Pin_0);GPIO_SetBits(GPIOC,GPIO_Pin_13);}
 				else if(i==1) GPIO_SetBits(GPIOA,GPIO_Pin_1);
-				else if(i==2) GPIO_SetBits(GPIOA,GPIO_Pin_2);
-				else if(i==3) GPIO_SetBits(GPIOA,GPIO_Pin_3);
+				//else if(i==2) GPIO_SetBits(GPIOA,GPIO_Pin_2);
+				//else if(i==3) GPIO_SetBits(GPIOA,GPIO_Pin_3);
 				else if(i==4) GPIO_SetBits(GPIOA,GPIO_Pin_4);
 				else if(i==5) GPIO_SetBits(GPIOA,GPIO_Pin_5);
 				else if(i==6) GPIO_SetBits(GPIOA,GPIO_Pin_6);
