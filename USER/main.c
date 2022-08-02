@@ -165,7 +165,7 @@ void init_iomodule()
 	    //下面是给各模块开启时钟
     //启动GPIO
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | \
-                           RCC_APB2Periph_GPIOC ,
+                           RCC_APB2Periph_GPIOC|RCC_APB2Periph_AFIO ,
                            ENABLE);
 		GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable,ENABLE);//禁用JTAC模式，只开启SWD模式，PB3，PB4需要使用GPIO功能
 		GPIO_InitTypeDef GPIO_InitStructure;
@@ -296,7 +296,7 @@ void init_input(void)
 		else if(last_check_id==7)	input_data = GPIO_ReadInputDataBit(GPIOB,GPIO_Pin_7);
 		if(last_check_id<S_INPUTREG_NBit)
 		{
-			xMBUtilSetBits(&ucInputBuf[last_check_id/8],last_check_id,1,input_data);
+			xMBUtilSetBits(&ucInputBuf[last_check_id/8],last_check_id%8,1,input_data);
 		}
 	}
 }
@@ -320,7 +320,7 @@ void handle_input(void)
 		else if(last_check_id==7)	input_data = GPIO_ReadInputDataBit(GPIOB,GPIO_Pin_7);
 		if(last_check_id<S_INPUTREG_NBit)
 		{
-			xMBUtilSetBits(&ucInputBuf[last_check_id/8],last_check_id,1,input_data);
+			xMBUtilSetBits(&ucInputBuf[last_check_id/8],last_check_id%8,1,input_data);
 		}
 		last_check_id++;
 	}
